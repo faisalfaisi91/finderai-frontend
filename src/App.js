@@ -35,106 +35,130 @@ function App() {
   }, [messages.length]);
 
 
-  const handleSend = useCallback(async (e) => {
-    e.preventDefault();
-    await sendCurrentMessage();
-  }, [input, isLoading]);
-
   // Extracted send logic so it can be called from both form submit and Enter key
   const sendCurrentMessage = useCallback(async () => {
+    // This function uses input and isLoading, so they are in its array
     if (!input.trim() || isLoading) return;
 
-    const userMessage = { role: 'user', content: input };
+    const userQuery = input.trim();
+    const userMessage = { role: 'user', content: userQuery };
+    
+    // Update state synchronously for the UI
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
 
     try {
-      const responseData = await fetchRAGResponse(input, sessionIdRef.current);
-      const assistantMessage = { role: 'assistant', content: responseData };
+      const responseData = await fetchRAGResponse(userQuery, sessionIdRef.current);
+      
+      const assistantMessage = { 
+        role: 'assistant', 
+        content: responseData 
+      };
       setMessages(prev => [...prev, assistantMessage]);
+
     } catch (error) {
       console.error(error);
-      const errorMessage = {
-        role: 'assistant',
-        content: error.message && error.message.includes && error.message.includes('Failed to fetch')
-          ? "Error: Could not connect to the API. Ensure your FastAPI server is running."
-          : `An error occurred: ${error.message || String(error)}`
+      const errorMessage = { 
+        role: 'assistant', 
+        content: "Error: Could not connect to the API or received an invalid response."
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading]);
+    // Dependency array for sendCurrentMessage: uses input, isLoading, and sessionIdRef
+  }, [input, isLoading, sessionIdRef]); 
+
+
+  // Handler for form submission
+  const handleSend = useCallback(async (e) => {
+    e.preventDefault();
+    // CRITICAL FIX: Only call the function; include the function in the dependency array.
+    await sendCurrentMessage(); 
+  }, [sendCurrentMessage]); // Dependency array: ONLY depends on sendCurrentMessage
+
 
   const renderMessageContent = (message) => {
     if (message.role === 'assistant' && typeof message.content === 'object' && message.content !== null) {
-      // Structured responses are handled by the component
       return <StructuredResponse data={message.content} />;
     }
-    // User message content
-    return <p className="text-white">{message.content}</p>;
+    return <p className={message.role === 'user' ? "text-white" : "text-gray-800"}>{message.content}</p>;
   };
 
   return (
-    // Dark patterned background with centered hero layout
-    <div className="app-hero">
-
-      {/* Centered Hero */}
-      <main className="hero-main">
-        <div className="hero-inner">
-          <div className="hero-center">
-            {/* Logo area */}
-            <div className="logo-circle">
-              <img src={`${process.env.PUBLIC_URL}/logo192.png`} alt="Ansari" className="logo-img" />
-            </div>
-            <h1 className="hero-title">FinderAI</h1>
-          </div>
+    // Outer container: Full screen, light background
+    <div className="flex flex-col h-screen bg-gray-100"> 
+      
+      {/* 1. Header (Fixed Top Bar) - Indigo/Primary Color */}
+      <header className="p-4 bg-indigo-600 text-white shadow-md flex-shrink-0">
+        <div className="max-w-4xl mx-auto"> 
+          <h1 className="text-2xl font-bold">🕌 Hadith AI Chatbot</h1>
+          <p className="text-sm opacity-90">Conversational RAG Engine</p>
         </div>
-      </main>
+      </header>
 
-      {/* Chat area (visible) - shows message history and assistant responses */}
-      <section className="chat-area">
-        <div className="chat-inner">
+      {/* 2. Chat History Area (Scrollable & Centered) */}
+      <div className="flex-grow overflow-y-auto p-4 space-y-6">
+        <div className="max-w-4xl mx-auto space-y-6"> 
           {messages.map((message, index) => (
-            <div key={index} className={`chat-message ${message.role === 'user' ? 'user' : 'assistant'}`}>
-              {renderMessageContent(message)}
+            <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div 
+                className={`w-full sm:max-w-xl p-4 rounded-xl shadow-lg transition-all duration-300 ${
+                  message.role === 'user' 
+                    ? 'bg-blue-500 text-white' // User message: Blue (Primary accent)
+                    : 'bg-white text-gray-900 border border-gray-200' // Assistant: Clean White
+                }`}
+              >
+                {renderMessageContent(message)}
+              </div>
             </div>
           ))}
+          
+          {/* Thinking Indicator */}
+          {isLoading && (
+            <div className="flex justify-start">
+              <div className="max-w-md p-3 bg-gray-200 rounded-xl">
+                <p className="text-gray-600 animate-pulse">Thinking...</p>
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
-      </section>
+      </div>
 
-      {/* Fixed footer input - remains at the bottom of the viewport */}
-      <footer className="bottom-input">
-        <div className="bottom-inner">
-          <form onSubmit={handleSend} className="input-form">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Salam, Message Ansari..."
-              className="main-textarea"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendCurrentMessage();
-                }
-              }}
-              disabled={isLoading}
-            />
-            <button
-              type="submit"
-              className="send-button"
-              disabled={isLoading || !input.trim()}
-            >
-              <BsSendFill size={20} />
-            </button>
-          </form>
+      {/* 3. Input Footer (Fixed Bottom Bar & Centered Input) - Light Gray */}
+      <footer className="p-4 bg-white border-t border-gray-200 flex-shrink-0 shadow-lg">
+        <div className="max-w-4xl mx-auto"> 
+            <form onSubmit={handleSend} className="flex w-full"> 
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask your question about Hadith or Islamic topics..."
+                className="flex-grow p-3 border border-gray-300 bg-white text-gray-800 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-400"
+                disabled={isLoading}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendCurrentMessage(); // Call the isolated function directly
+                  }
+                }}
+              />
+              <button
+                type="submit"
+                className={`p-3 text-white rounded-r-lg font-semibold flex items-center justify-center transition-colors duration-200 ${
+                  isLoading || !input.trim()
+                    ? 'bg-indigo-400 opacity-80 cursor-not-allowed'
+                    : 'bg-indigo-600 hover:bg-indigo-700' // Blue accent for button
+                }`}
+                disabled={isLoading || !input.trim()}
+              >
+                <BsSendFill size={20} />
+              </button>
+            </form>
         </div>
       </footer>
-      <div className="hero-footer">
-        <div className="footer-right">FinderAI can make mistakes. Consider consulting a qualified Islamic Scholar.</div>
-      </div>
     </div>
   );
 }
